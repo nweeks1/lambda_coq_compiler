@@ -1,10 +1,6 @@
 Print nat.
 Print Nat.pred.
 
-(* On adopte une convention un peu différente, pour ne pas avoir à faire à des entiers négatifs 
-  (je veux rester avec nat), le terme lambda x. x sera représenté par le terme lambda. 1 et non
-  lambda.0.
-*)
 
 Inductive de_brujin : Set :=
   | Var : nat -> de_brujin
@@ -12,81 +8,139 @@ Inductive de_brujin : Set :=
   | App : de_brujin -> de_brujin -> de_brujin
 .
 
-Print nat.
-
-Print de_brujin.
-Print de_brujin_ind.
-Print nat_ind.
-(*
-  Cette fonction décrémente toutes les variables d'une expression.
-*)
-
-Fixpoint decrement_vars (u: de_brujin) : de_brujin := 
-  match u with
-    | Var i => Var (pred i)
-    | App v w => App (decrement_vars v) (decrement_vars w)
-    | Abstraction v => Abstraction (decrement_vars v)
-    end
-.
-
-(* 
- On a ClosedN n u ssi toutes les variables libres de u sont <= n.
+(**
+ On a ClosedN n u ssi toutes les variables libres de u sont < n.
  Ainsi, u est clos ssi closedN 0 u.
- Pour définir closedN n u, c'est assez immédiat dans le cas d'une variable ou d'une application
- Pour le cas d'une abstraction lambda . u, il faut faire attention aux 1 qui peuvent être présents
- dans le terme, qui sont des variables liées. Pour cela, on décrémente de 1 toutes les variables
- qui apparaissent dans u. de sorte à ce que les 1 n'influent plus, mais on décrémente aussi
- n de 1
-*)
+**)
 
 Inductive ClosedN : nat -> de_brujin -> Prop :=
-  | ClosedN_Var : forall n m : nat, m <= n -> ClosedN n (Var m)
+  | ClosedN_Var : forall n m : nat, m < n -> ClosedN n (Var m)
   | ClosedN_App : forall (n : nat) (u : de_brujin) (v : de_brujin),
               ClosedN n u -> ClosedN n v -> ClosedN n (App u v)
   | ClosedN_Abstraction : forall (n : nat) (u : de_brujin),
-              ClosedN n (decrement_vars u) -> ClosedN (S n) (Abstraction u)
+              ClosedN (S n) u -> ClosedN n (Abstraction u)
 .
 
 
 Theorem ClosedIncreasing : forall (n : nat) (u : de_brujin), ClosedN n u -> ClosedN (S n) u.
 Proof.
-  intro.
-  induction n.
   
-  + intro.
-    induction u.
-    intro. inversion H. apply ClosedN_Var. apply le_S. trivial.
-    intro. inversion H.
-    intro.
+  intro.
+  intro.
+  generalize n.
+  clear n.
+  
+  induction u.
+  
+  + intros.
     inversion H.
-    apply ClosedN_App.
-    apply IHu1. trivial. apply IHu2. trivial.
-    
-  + intro.
-    induction u.
-    
-    intro. inversion H. apply ClosedN_Var. apply le_S. trivial.
-    
-    intro.
+    apply ClosedN_Var.
+    apply le_S.
+    trivial.
+  
+  + intros.
     inversion H.
     apply ClosedN_Abstraction.
-    apply IHn. trivial.
+    apply IHu. trivial.
     
-    intro.
-    inversion H.
-    apply ClosedN_App. apply IHu1. trivial. apply IHu2. trivial.
+  + intros.
+    apply ClosedN_App.
+    inversion H. apply IHu1. trivial. 
+    inversion H. apply IHu2. trivial.
 Qed.
 
-Definition Closed : de_brujin -> Type := ClosedN 0.
 
-Fixpoint subst (n : nat) (t : de_brujin) (u : de_brujin) =
+Definition Closed : de_brujin -> Prop := ClosedN 0.
+
+Lemma Closed_lt : forall (n : nat) (u : de_brujin), Closed u -> ClosedN n u.
+Proof.
+  intro.
+  induction n.
+  intros. trivial.
+  intros. apply ClosedIncreasing. apply IHn. trivial.
+Qed.
+
+(** Incrémente variables libres de u avec indice >= n **)
+Fixpoint increment_greater (n : nat) (u : de_brujin) : de_brujin :=
+  match u with
+    | Var i => if Nat.ltb i n then Var i else Var (S i)
+    | App v w => App (increment_greater n v) (increment_greater n w)
+    | Abstraction v => Abstraction (increment_greater (S n) v)
+  end
+.
+
+Definition increment_free_vars := increment_greater 0.
+
+Fixpoint subst (n : nat) (t : de_brujin) (u : de_brujin) :=
   match u with
     | Var i => 
-        if i = n then t else u
+        if Nat.eqb i n then t else u
     | App v w => 
         App (subst n t v) (subst n t w)
-    | Abstraction v => 
-        if n = 0 then 
-          Abstraction v
-        else
-        
+    | Abstraction v =>
+        Abstraction (subst (S n) (increment_free_vars t) v)
+  end
+.
+
+Lemma not_lt_0 : forall (n : nat), ~(n < 0).
+  intro.
+  intro.
+  inversion H.
+Qed.
+
+Lemma not_lt_eq : forall (n : nat) (m : nat), n < m -> Nat.eqb n m = false.
+Proof.
+  intro. induction n.
+  intros.
+  simpl.
+  inversion H.
+  trivial. trivial.
+  intros.
+  destruct m.
+  trivial.
+  simpl.
+  apply IHn.
+  apply le_S_n. trivial.
+Qed.
+
+
+Lemma ClosedN_subst : forall (n : nat) (t : de_brujin) (u : de_brujin),
+  ClosedN n u -> subst n t u = u.
+Proof.
+  intro. intro. intro.
+  generalize n t.
+  induction u.
+
+  + intros.
+    inversion H.
+    simpl.
+    case_eq (Nat.eqb n0 n1).
+    clear H n2 m H1 H0.
+    rewrite (not_lt_eq n0 n1).
+    intro. inversion H.
+    trivial.
+    intro. trivial.
+
+  + intros.
+    simpl.
+    inversion H.
+    rewrite IHu.
+    trivial. trivial.
+
+  + intros.
+    simpl.
+    rewrite IHu1.
+    rewrite IHu2.
+    trivial. 
+    inversion H.  trivial.  inversion H. trivial.
+Qed.
+
+
+Lemma Closed_subst : forall (n : nat) (t : de_brujin) (u : de_brujin),
+  Closed u -> subst n t u = u.
+Proof.
+  intros.
+  apply ClosedN_subst.
+  apply Closed_lt.
+  trivial.
+Qed.
