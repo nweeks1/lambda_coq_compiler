@@ -1,7 +1,6 @@
-Print nat.
-Print Nat.pred.
-
-
+Require Import List.
+Import ListNotations.
+Require Import Arith.
 Inductive de_brujin : Set :=
   | Var : nat -> de_brujin
   | Abstraction : de_brujin -> de_brujin
@@ -144,3 +143,91 @@ Proof.
   apply Closed_lt.
   trivial.
 Qed.
+
+Print List.nth.
+Print list.
+Print Nat.
+
+Fixpoint parallel_subst (i : nat) (liU : list de_brujin) (u : de_brujin) : de_brujin :=
+  match u with
+    | Var j => 
+      if (andb (Nat.leb i j) (Nat.ltb j (i + List.length liU))) then
+       List.nth (j-i) liU (Var 0) 
+       else Var j
+    | App v w => App (parallel_subst i liU v) (parallel_subst i liU w)
+    | Abstraction v => Abstraction (parallel_subst (S i) (List.map increment_free_vars liU) v)
+  end
+.
+
+Theorem subst_empty_trivial : forall (i : nat) (u : de_brujin),
+    parallel_subst i nil u = u.
+Proof.
+  intros.
+  generalize i. clear i.
+  induction u.
+  
+  + intro.
+    simpl.
+    rewrite plus_0_r.
+    case_eq (i <=? n).
+    intro.
+    case_eq (n <? i).
+    intro.
+    apply (proj1 (Nat.leb_le i n)) in H.
+    apply (proj1 (Nat.ltb_lt n i)) in H0.
+    exfalso.
+    apply (le_not_lt i n H).
+    trivial.
+    simpl. trivial.
+    simpl. trivial.
+
+  + simpl.
+    intro.
+    rewrite (IHu (S i)).
+    trivial.
+  + intro.
+    simpl.
+    rewrite IHu1. rewrite IHu2.
+    trivial.
+Qed.
+
+Theorem ClosedN_subst_trivial : forall (i : nat) (liU : list de_brujin) (u : de_brujin),
+  ClosedN i u -> parallel_subst i liU u = u.
+Proof.
+  intro. intro. intro.
+  generalize i liU.
+  clear i liU.
+  induction u.
+
+  + intros.
+    inversion H.
+    simpl.
+    case_eq (i <=? n).
+    intro.
+    apply (proj1 (Nat.leb_le i n)) in H3.
+    exfalso. apply (le_not_lt i n H3). trivial.
+    trivial.
+
+  + intros.
+    inversion H.
+    simpl.
+    rewrite IHu. trivial. trivial.
+  
+  + intros.
+    simpl. inversion H.
+    rewrite IHu1. rewrite IHu2. trivial. trivial. trivial.
+Qed.
+
+Print List.Forall.
+
+
+Theorem Subst_composite : forall (i : nat) (u0 : de_brujin) (q : list de_brujin) (u : de_brujin),
+  List.Forall (ClosedN i) q -> parallel_subst i (u0 :: q) u = subst i u0 (parallel_subst (S i) q u).
+Proof.
+  intro. intro. intro. intro.
+  generalize i u0 q. clear i u0 q.
+  
+  induction u.
+  
+  + intros.
+    simpl.
