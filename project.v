@@ -71,6 +71,40 @@ Fixpoint increment_greater (n : nat) (u : de_brujin) : de_brujin :=
 
 Definition increment_free_vars := increment_greater 0.
 
+Lemma closedN_incrementM : forall (n : nat) (m : nat) (u : de_brujin), 
+  ClosedN n u -> ClosedN (S n) (increment_greater m u).
+Proof.
+  intro. intro. intro.
+  generalize n m.
+  clear n m.
+  induction u.
+  intros.
+  simpl.
+  inversion H.
+  clear m0 n1 H1 H0.
+  case_eq (n <? m).
+  intro.
+  apply ClosedN_Var.
+  apply lt_S. trivial.
+  intro.
+  apply ClosedN_Var. apply lt_n_S. trivial.
+  
+  intros.
+  simpl.
+  apply ClosedN_Abstraction.
+  apply IHu.
+  inversion H.
+  trivial.
+  
+  intros.
+  simpl.
+  apply ClosedN_App.
+  inversion H.
+  apply IHu1. trivial.
+  apply IHu2. inversion H. trivial.
+Qed.
+  
+
   
 Fixpoint subst (n : nat) (t : de_brujin) (u : de_brujin) :=
   match u with
@@ -381,7 +415,18 @@ Proof.
     trivial.
     induction q.
     simpl. trivial.
-    
     simpl.
     apply Forall_cons.
+    apply closedN_incrementM. 
+    inversion H.
+    trivial.
+    apply IHq. 
+    inversion H. trivial.
     
+  +  intros.
+     simpl.
+     rewrite (IHu1).
+     rewrite (IHu2).
+     trivial.
+     trivial. trivial.
+Qed.
