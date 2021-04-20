@@ -491,7 +491,7 @@ Inductive instruction : Type :=
   | Push : code -> instruction
   
 with code : Type :=
-  | SingleCode : instruction -> code
+  | EmptyCode : code
   | ConsCode : instruction -> code -> code.
   
 Inductive environment : Type :=
@@ -504,11 +504,128 @@ Inductive stack : Type :=
   | ConsStack : code -> environment -> stack -> stack
 .
 
-Definition state := (code, environment, stack).
+Definition state := (code * environment * stack) % type.
 
-Fixpoint evalKrivine (code : code) (env : environment) : option environment :=
-  match code with
-    | SingleCode inst => None
-    | ConsCode instr qc => None
+Definition stepKrivine (st : state) : option state :=
+  match st with
+    | (c, env, stk) => 
+      match c with
+        | EmptyCode => None
+        | ConsCode inst nxtCode =>
+          match inst with
+            | Access 0 =>
+              match env with
+                | EmptyEnv => None
+                | ConsEnv c0 e0 _ => Some (c0, e0, stk)
+              end
+            | Access (S n) =>
+              match env with
+                | EmptyEnv => None
+                | ConsEnv c0 e0 e' => Some (ConsCode (Access n) EmptyCode, e', stk)
+              end
+            | Push c' => 
+              Some (nxtCode, env, ConsStack c' env stk)
+            | Grab => 
+              match stk with
+                | EmptyStack => None
+                | ConsStack c0 e0 nxtStk => Some (nxtCode, ConsEnv c0 e0 env, nxtStk)
+              end
+          end
+      end
+  end. 
+
+Fixpoint Comp (u : de_brujin) : code :=
+  match u with
+    | Abstraction t => ConsCode Grab (Comp t)
+    | App t u => ConsCode (Push (Comp u)) (Comp t)
+    | Var n => ConsCode (Access n) EmptyCode
   end.
+
+Fixpoint revCompCode (c : code) : option de_brujin :=
+  match c with
+    | EmptyCode => None
+    | ConsCode instr nxtCode =>
+      match instr with
+        | Access n => Some (Var n)
+        | Push c' =>
+          match revCompCode c', revCompCode nxtCode with
+            | None, _ => None
+            | _, None => None
+            | Some v, Some u => Some (App u v)
+          end
+        | Grab  =>
+          match revCompCode nxtCode with
+            | None => None
+            | Some u => Some (Abstraction u)
+          end
+      end
+  end.
+
+Fixpoint revCompEnv (env : environment) : option (list de_brujin) :=
+  match env with
+    | EmptyEnv => Some []
+    | ConsEnv c0 e0 e => 
+      match revCompCode c0 with
+        | None => None
+        | Some u => 
+          match revCompEnv e0, revCompEnv e with
+            | None, _ => None
+            | _, None => None
+            | Some substc0, Some substRest =>
+              Some ( (parallel_subst 0 substc0 u) :: substRest)
+          end
+      end
+  end.
+
+Fixpoint revCompStack (stk : stack) : option (list de_brujin) :=
+  match stk with
+    | EmptyStack => Some []
+    | ConsStack c0 e0 nxtStk => 
+      match revCompCode c0, revCompEnv e0, revCompStack nxtStk with
+        | None, _, _ | _, None, _ | _, _, None => None
+        | Some u, Some liU, Some liStk => Some ((parallel_subst 0 liU u) :: liStk)
+      end
+  end.
+
+
+Definition revCompState (st : state) : option de_brujin :=
+  match st with
+    | (c, e, stk) => 
+      match revCompCode c, revCompEnv e, revCompStack stk with
+        | None, _, _ | _, None, _ | _, _, None => None
+        | Some u, Some liU, Some liStk =>
+         Some (List.fold_left (fun cur nxt => App cur nxt) liStk (parallel_subst 0 liU u))
+      end
+  end.
+
+Theorem CompInverse : forall (u : de_brujin), revCompState (Comp u, EmptyEnv, EmptyStack) = Some u.
+Proof.
+  intro.
+  induction u.
   
+  + trivial.
+  
+  + simpl. 
+    simpl in IHu.
+    destruct (revCompCode (Comp u)).
+    rewrite subst_empty_trivial.
+    rewrite subst_empty_trivial in IHu.
+    inversion IHu.
+    trivial.
+    inversion IHu.
+
+  + simpl.
+    simpl in IHu1.
+    simpl in IHu2.
+    destruct (revCompCode (Comp u1)).
+    rewrite (subst_empty_trivial) in IHu1.
+    inversion IHu1.
+    destruct (revCompCode (Comp u2)).
+    rewrite subst_empty_trivial.
+    rewrite subst_empty_trivial in IHu2.
+    inversion IHu2.
+    trivial.
+    inversion IHu2.
+    inversion IHu1.
+Qed.
+
