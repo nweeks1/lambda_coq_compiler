@@ -21,6 +21,61 @@ Inductive ClosedN : nat -> de_brujin -> Prop :=
               ClosedN (S n) u -> ClosedN n (Abstraction u)
 .
 
+Definition Closed : de_brujin -> Prop := ClosedN 0.
+
+(** Incrémente variables libres de u avec indice >= n **)
+Fixpoint increment_greater (n : nat) (u : de_brujin) : de_brujin :=
+  match u with
+    | Var i => if Nat.ltb i n then Var i else Var (S i)
+    | App v w => App (increment_greater n v) (increment_greater n w)
+    | Abstraction v => Abstraction (increment_greater (S n) v)
+  end
+.
+
+Definition increment_free_vars := increment_greater 0.
+
+
+Fixpoint subst (n : nat) (t : de_brujin) (u : de_brujin) :=
+  match u with
+    | Var i => 
+        if Nat.eqb i n then t else u
+    | App v w => 
+        App (subst n t v) (subst n t w)
+    | Abstraction v =>
+        Abstraction (subst (S n) (increment_free_vars t) v)
+  end
+.
+
+
+Fixpoint parallel_subst (i : nat) (liU : list de_brujin) (u : de_brujin) : de_brujin :=
+  match u with
+    | Var j => 
+      if (andb (Nat.leb i j) (Nat.ltb j (i + List.length liU))) then
+       List.nth (j-i) liU (Var 0) 
+       else Var j
+    | App v w => App (parallel_subst i liU v) (parallel_subst i liU w)
+    | Abstraction v => Abstraction (parallel_subst (S i) (List.map increment_free_vars liU) v)
+  end
+.
+
+
+Inductive Beta : de_brujin -> de_brujin -> Prop :=
+  | BetaStep : forall (u : de_brujin) (v : de_brujin), 
+    Beta (App (Abstraction u) v ) (subst 0 v u)
+  | BetaAppL : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
+      Beta t u -> Beta (App t v) (App u v)
+  | BetaAppR : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
+      Beta t v -> Beta (App u t) (App u v)
+  | BetaAbst : forall (u : de_brujin) (v : de_brujin),
+      Beta u v -> Beta (Abstraction (increment_free_vars u)) (Abstraction (increment_free_vars v))
+.
+
+Inductive BetaS : de_brujin -> de_brujin -> Prop :=
+  | BetaSRefl : forall (u : de_brujin),
+    BetaS u u
+  | BetaSStep : forall (t : de_brujin) (u : de_brujin) (v : de_brujin),
+    Beta t u -> BetaS u v -> BetaS t v
+.
 
 Theorem ClosedIncreasing : forall (n : nat) (u : de_brujin), ClosedN n u -> ClosedN (S n) u.
 Proof.
@@ -50,8 +105,6 @@ Proof.
 Qed.
 
 
-Definition Closed : de_brujin -> Prop := ClosedN 0.
-
 Lemma Closed_lt : forall (n : nat) (u : de_brujin), Closed u -> ClosedN n u.
 Proof.
   intro.
@@ -59,17 +112,6 @@ Proof.
   intros. trivial.
   intros. apply ClosedIncreasing. apply IHn. trivial.
 Qed.
-
-(** Incrémente variables libres de u avec indice >= n **)
-Fixpoint increment_greater (n : nat) (u : de_brujin) : de_brujin :=
-  match u with
-    | Var i => if Nat.ltb i n then Var i else Var (S i)
-    | App v w => App (increment_greater n v) (increment_greater n w)
-    | Abstraction v => Abstraction (increment_greater (S n) v)
-  end
-.
-
-Definition increment_free_vars := increment_greater 0.
 
 Lemma closedN_incrementM : forall (n : nat) (m : nat) (u : de_brujin), 
   ClosedN n u -> ClosedN (S n) (increment_greater m u).
@@ -104,18 +146,6 @@ Proof.
   apply IHu2. inversion H. trivial.
 Qed.
   
-
-  
-Fixpoint subst (n : nat) (t : de_brujin) (u : de_brujin) :=
-  match u with
-    | Var i => 
-        if Nat.eqb i n then t else u
-    | App v w => 
-        App (subst n t v) (subst n t w)
-    | Abstraction v =>
-        Abstraction (subst (S n) (increment_free_vars t) v)
-  end
-.
 
 Lemma not_lt_0 : forall (n : nat), ~(n < 0).
   intro.
@@ -179,21 +209,6 @@ Proof.
   apply Closed_lt.
   trivial.
 Qed.
-
-Print List.nth.
-Print list.
-Print Nat.
-
-Fixpoint parallel_subst (i : nat) (liU : list de_brujin) (u : de_brujin) : de_brujin :=
-  match u with
-    | Var j => 
-      if (andb (Nat.leb i j) (Nat.ltb j (i + List.length liU))) then
-       List.nth (j-i) liU (Var 0) 
-       else Var j
-    | App v w => App (parallel_subst i liU v) (parallel_subst i liU w)
-    | Abstraction v => Abstraction (parallel_subst (S i) (List.map increment_free_vars liU) v)
-  end
-.
 
 Theorem subst_empty_trivial : forall (i : nat) (u : de_brujin),
     parallel_subst i nil u = u.
@@ -429,4 +444,42 @@ Proof.
      rewrite (IHu2).
      trivial.
      trivial. trivial.
+Qed.
+
+
+Theorem BetaSContextL : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
+  BetaS t u -> BetaS (App t v) (App u v).
+Proof.
+  intros.
+  induction H.
+  apply BetaSRefl.
+  apply (BetaSStep (App t v) (App u v)).
+  apply BetaAppL.
+  trivial.
+  trivial.
+Qed.
+
+
+Theorem BetaSContextR : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
+  BetaS t v -> BetaS (App u t) (App u v).
+Proof.
+  intros.
+  induction H.
+  apply BetaSRefl.
+  apply (BetaSStep (App u t) (App u u0)).
+  apply BetaAppR.
+  trivial.
+  trivial.
+Qed.
+
+Theorem BetaSContextAbst : forall (t : de_brujin) (u : de_brujin),
+  BetaS t u -> BetaS (Abstraction (increment_free_vars t)) (Abstraction (increment_free_vars u)).
+Proof.
+  intros.
+  induction H.
+  apply BetaSRefl.
+  apply (BetaSStep (Abstraction (increment_free_vars t)) (Abstraction (increment_free_vars u))).
+  apply BetaAbst.
+  trivial.
+  trivial.
 Qed.
