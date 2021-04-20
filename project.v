@@ -2,7 +2,7 @@ Require Import List.
 Import ListNotations.
 Require Import Arith.
 Require Import Bool.
-Inductive de_brujin : Set :=
+Inductive de_brujin : Type :=
   | Var : nat -> de_brujin
   | Abstraction : de_brujin -> de_brujin
   | App : de_brujin -> de_brujin -> de_brujin
@@ -483,3 +483,32 @@ Proof.
   trivial.
   trivial.
 Qed.
+
+
+Inductive instruction : Type := 
+  | Access : nat -> instruction
+  | Grab : instruction
+  | Push : code -> instruction
+  
+with code : Type :=
+  | SingleCode : instruction -> code
+  | ConsCode : instruction -> code -> code.
+  
+Inductive environment : Type :=
+  | EmptyEnv : environment
+  | ConsEnv : code -> environment -> environment -> environment
+.
+
+Inductive stack : Type :=
+  | EmptyStack : stack
+  | ConsStack : code -> environment -> stack -> stack
+.
+
+Definition state := (code, environment, stack).
+
+Fixpoint evalKrivine (code : code) (env : environment) : option environment :=
+  match code with
+    | SingleCode inst => None
+    | ConsCode instr qc => None
+  end.
+  
