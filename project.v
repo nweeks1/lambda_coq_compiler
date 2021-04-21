@@ -2,6 +2,7 @@ Require Import List.
 Import ListNotations.
 Require Import Arith.
 Require Import Bool.
+
 Inductive de_brujin : Type :=
   | Var : nat -> de_brujin
   | Abstraction : de_brujin -> de_brujin
@@ -269,9 +270,6 @@ Proof.
     rewrite IHu1. rewrite IHu2. trivial. trivial. trivial.
 Qed.
 
-Print List.Forall.
-
-
 Lemma minus_0_le : forall (n : nat) (m : nat), n-m = 0 -> n <= m.
 Proof.
   intro.
@@ -484,7 +482,6 @@ Proof.
   trivial.
 Qed.
 
-
 Inductive instruction : Type := 
   | Access : nat -> instruction
   | Grab : instruction
@@ -598,6 +595,35 @@ Definition revCompState (st : state) : option de_brujin :=
       end
   end.
 
+Fixpoint length_stack (stk : stack) : nat :=
+  match stk with
+    | EmptyStack => 0
+    | ConsStack c0 e0 nxtStk => 1 + length_stack nxtStk
+  end.
+
+Fixpoint length_env (env : environment) : nat :=
+  match env with
+    | EmptyEnv => 0
+    | ConsEnv c0 e0 nxtEnv => 1 + length_env nxtEnv
+  end.
+
+Inductive CorrectEnv : environment -> Prop :=
+  | CorrectEmptyEnv : CorrectEnv EmptyEnv
+  | CorrectConsEnv : forall (c0 : code) (e0 : environment) (nxtEnv : environment),
+    CorrectEnv nxtEnv -> (exists u, ClosedN (length_env e0) u /\ Some u = revCompCode c0)
+    -> CorrectEnv e0 -> CorrectEnv (ConsEnv c0 e0 nxtEnv).
+
+Inductive CorrectStack : stack -> Prop :=
+  | CorrectEmptyStk : CorrectStack EmptyStack
+  | CorrectConsStk : forall (c0 : code) (e0 : environment) (nxtStk : stack),
+    CorrectStack nxtStk -> (exists u, ClosedN (length_env e0) u /\ Some u = revCompCode c0)
+    -> CorrectStack (ConsStack c0 e0 nxtStk).
+
+Inductive CorrectState : state -> Prop :=
+  | CorrectSt : forall (c : code) (env : environment) (stk : stack),
+    (exists u, ClosedN (length_env env) u /\ Some u = revCompCode c)
+    -> CorrectEnv env -> CorrectStack stk -> CorrectState (c, env, stk).
+
 Theorem CompInverse : forall (u : de_brujin), revCompState (Comp u, EmptyEnv, EmptyStack) = Some u.
 Proof.
   intro.
@@ -629,3 +655,100 @@ Proof.
     inversion IHu1.
 Qed.
 
+Theorem correct_step : forall (cur : state), 
+    CorrectState cur -> (exists nxt, stepKrivine cur = Some nxt /\ CorrectState nxt).
+Proof.
+  intros.
+  induction cur.
+  induction a.
+  rename a into c.
+  rename b0 into env.
+  rename b into stk.
+  
+  induction c.
+  
+  + simpl.
+    inversion H.
+    simpl in H3.
+    inversion H3.
+    inversion H6.
+    inversion H8.
+  
+  + simpl.
+    induction i.
+    
+    ++ induction n.
+       
+       +++ induction env.
+           * inversion H.
+            inversion H3.
+            simpl in H6.
+            inversion H6.
+            inversion H8.
+            clear H8 H6.
+            inversion H7.
+            inversion H6.
+            rewrite H10 in H11.
+            inversion H11.
+            rewrite H10 in H9.
+            inversion H9.
+          
+          * inversion H.
+            clear H2 H1 H0 c1 env stk0.
+            exists (c0, env1, stk).
+            split.
+            trivial.
+            apply CorrectSt.
+            
+            ** inversion H4.
+               trivial.
+            ** inversion H4.
+               trivial.
+            ** trivial.
+          
+      +++ induction env.
+          
+          * inversion H.
+            inversion H3.
+            simpl in H6.
+            inversion H6.
+            inversion H8.
+            inversion H7.
+            inversion H9.
+            rewrite H10 in H13.
+            inversion H13.
+            rewrite H10 in H12.
+            inversion H12.
+            
+          * exists (ConsCode (Access n) EmptyCode, env2, stk).
+            split.
+            trivial.
+            apply CorrectSt.
+            
+            ** simpl.
+               exists (Var n).
+               split.
+               inversion H.
+               inversion H3.
+               simpl in H6.
+               inversion H6.
+               inversion H8.
+               rewrite H10 in H7.
+               inversion H7.
+               apply ClosedN_Var.
+               apply lt_S_n in H12.
+               trivial.
+               trivial.
+           
+            ** inversion H.
+               inversion H4.
+               trivial.
+               
+            ** inversion H.
+               trivial.
+     ++ induction stk.
+        
+        +++ exfalso.
+            inversion H.
+            clear H0 H1 H2 H5 c0 env0 stk.
+            simpl in H3.
