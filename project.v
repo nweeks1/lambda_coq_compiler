@@ -616,7 +616,8 @@ Inductive CorrectEnv : environment -> Prop :=
 Inductive CorrectStack : stack -> Prop :=
   | CorrectEmptyStk : CorrectStack EmptyStack
   | CorrectConsStk : forall (c0 : code) (e0 : environment) (nxtStk : stack),
-    CorrectStack nxtStk -> (exists u, ClosedN (length_env e0) u /\ Some u = revCompCode c0)
+    CorrectStack nxtStk -> CorrectEnv e0
+   -> (exists u, ClosedN (length_env e0) u /\ Some u = revCompCode c0)
     -> CorrectStack (ConsStack c0 e0 nxtStk).
 
 Inductive CorrectState : state -> Prop :=
@@ -656,7 +657,8 @@ Proof.
 Qed.
 
 Theorem correct_step : forall (cur : state), 
-    CorrectState cur -> (exists nxt, stepKrivine cur = Some nxt /\ CorrectState nxt).
+    CorrectState cur -> (exists nxt, stepKrivine cur = Some nxt) 
+    -> (exists nxt, stepKrivine cur = Some nxt /\  CorrectState nxt).
 Proof.
   intros.
   induction cur.
@@ -665,90 +667,174 @@ Proof.
   rename b0 into env.
   rename b into stk.
   
+  simpl.
   induction c.
   
-  + simpl.
-    inversion H.
-    simpl in H3.
-    inversion H3.
-    inversion H6.
-    inversion H8.
-  
-  + simpl.
-    induction i.
+  + inversion H.
+    inversion H4.
+    inversion H7.
+    simpl in H9.
+    inversion H9.
+    
+  + induction i.
     
     ++ induction n.
-       
-       +++ induction env.
-           * inversion H.
-            inversion H3.
-            simpl in H6.
-            inversion H6.
-            inversion H8.
-            clear H8 H6.
-            inversion H7.
-            inversion H6.
-            rewrite H10 in H11.
-            inversion H11.
-            rewrite H10 in H9.
-            inversion H9.
-          
-          * inversion H.
-            clear H2 H1 H0 c1 env stk0.
-            exists (c0, env1, stk).
-            split.
-            trivial.
-            apply CorrectSt.
-            
-            ** inversion H4.
-               trivial.
-            ** inversion H4.
-               trivial.
-            ** trivial.
-          
-      +++ induction env.
-          
-          * inversion H.
-            inversion H3.
-            simpl in H6.
-            inversion H6.
-            inversion H8.
-            inversion H7.
-            inversion H9.
-            rewrite H10 in H13.
-            inversion H13.
-            rewrite H10 in H12.
-            inversion H12.
-            
-          * exists (ConsCode (Access n) EmptyCode, env2, stk).
-            split.
-            trivial.
-            apply CorrectSt.
-            
-            ** simpl.
-               exists (Var n).
-               split.
-               inversion H.
-               inversion H3.
-               simpl in H6.
-               inversion H6.
-               inversion H8.
-               rewrite H10 in H7.
-               inversion H7.
-               apply ClosedN_Var.
-               apply lt_S_n in H12.
-               trivial.
-               trivial.
-           
-            ** inversion H.
-               inversion H4.
-               trivial.
-               
-            ** inversion H.
-               trivial.
-     ++ induction stk.
         
-        +++ exfalso.
-            inversion H.
-            clear H0 H1 H2 H5 c0 env0 stk.
-            simpl in H3.
+       * induction env.
+         
+         ** inversion H0.
+            simpl in H1.
+            inversion H1.
+         ** exists (c0, env1, stk).
+            split.
+            trivial.
+            apply CorrectSt.
+            
+            *** inversion H.
+                inversion H5.
+                trivial.
+            *** inversion H.
+                inversion H5.
+                trivial.
+            *** inversion H.
+                trivial.
+       * induction env.
+          
+         ** inversion H.
+            inversion H4.
+            inversion H7.
+            simpl in H9.
+            inversion H9.
+            rewrite H11 in H8.
+            simpl in H8.
+            inversion H8.
+            inversion H13.
+         
+         ** exists (ConsCode (Access n) EmptyCode, env2, stk).
+            split.
+            trivial.
+            apply CorrectSt.
+            
+            *** simpl.
+                exists (Var n).
+                split.
+                inversion H.
+                inversion H4.
+                inversion H7.
+                simpl in H9.
+                inversion H9.
+                rewrite H11 in H8.
+                inversion H8.
+                simpl in H13.
+                apply lt_S_n in H13.
+                apply ClosedN_Var.
+                trivial.
+                trivial.
+            *** inversion H.
+                inversion H5.
+                trivial.
+            *** inversion H.
+                trivial.
+     ++ induction stk.
+         
+         * clear IHc.
+           inversion H0.
+           simpl in H1.
+           inversion H1.
+         
+         * exists (c, ConsEnv c0 e env, stk).
+           split.
+           trivial.
+           apply CorrectSt.
+           
+           ** inversion H.
+              inversion H4.
+              inversion H7.
+              simpl in H9.
+              case_eq (revCompCode c).
+              
+              *** intros.
+                  exists d.
+                  split.
+                  rewrite H10 in H9.
+                  inversion H9.
+                  rewrite H12 in H8.
+                  inversion H8.
+                  simpl.
+                  trivial.
+                  trivial.
+              *** intro.
+                  rewrite H10 in H9.
+                  inversion H9.
+          ** clear IHc IHstk.
+             inversion H.
+             inversion H6.
+             apply CorrectConsEnv.
+             trivial.
+             trivial.
+             trivial.
+          ** clear IHc IHstk.
+              inversion H.
+              inversion H6.
+              trivial.
+     ++ clear IHc.
+        exists (c, env, ConsStack c0 env stk).
+        split.
+        trivial.
+        apply CorrectSt.
+        
+        * inversion H.
+          clear H1 H2 H3 c1 env0 stk0.
+          destruct H4.
+          destruct H1.
+          simpl in H2.
+          case_eq (revCompCode c0).
+          ** intros.
+             rewrite H3 in H2.
+             case_eq (revCompCode c).
+             *** intros.
+                 rewrite H4 in H2.
+                 exists d0.
+                 split.
+                 inversion H2.
+                 rewrite H8 in H1.
+                 inversion H1.
+                 trivial.
+                 trivial.
+             *** intro.
+                 rewrite H4 in H2.
+                 inversion H2.
+          ** intros.
+             rewrite H3 in H2.
+             inversion H2.
+       * inversion H.
+         trivial.
+       * inversion H.
+         clear H1 H2 H3 c1 env0 stk0.
+         inversion H4.
+         destruct H1.
+         simpl in H2.
+         case_eq (revCompCode c0).
+         ** intros.
+            rewrite H3 in H2.
+            case_eq (revCompCode c).
+            *** intros.
+                rewrite H7 in H2.
+                inversion H2.
+                rewrite H9 in H1.
+                inversion H1.
+                apply CorrectConsStk.
+                trivial.
+                trivial.
+                exists d.
+                split.
+                trivial.
+                rewrite H3.
+                trivial.
+            *** intro.
+                rewrite H7 in H2.
+                inversion H2.
+        ** intro.
+          rewrite H3 in H2.
+          inversion H2.
+Qed.
