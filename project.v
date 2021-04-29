@@ -1,6 +1,8 @@
 Require Import List.
 Import ListNotations.
 Require Import Arith.
+Require Import Logic.
+
 Require Import Bool.
 
 Inductive de_brujin : Type :=
@@ -59,10 +61,18 @@ Fixpoint parallel_subst (i : nat) (liU : list de_brujin) (u : de_brujin) : de_br
   end
 .
 
+Fixpoint decrement_vars_greater (u : de_brujin) (n : nat) :=
+  match u with
+    | Var i => if Nat.ltb n i then Var (i-1) else Var i
+    | App u v => App (decrement_vars_greater u n) (decrement_vars_greater v n)
+    | Abstraction u => Abstraction (decrement_vars_greater u (S n))
+  end.
+
+Definition decrement_free_vars (u : de_brujin) := decrement_vars_greater u 0.
 
 Inductive Beta : de_brujin -> de_brujin -> Prop :=
   | BetaStep : forall (u : de_brujin) (v : de_brujin), 
-    Beta (App (Abstraction u) v ) (subst 0 v u)
+    Beta (App (Abstraction u) v ) ((subst 0 v (decrement_free_vars u)))
   | BetaAppL : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
       Beta t u -> Beta (App t v) (App u v)
   | BetaAppR : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
@@ -316,7 +326,7 @@ Proof.
     intro. destruct n.
     simpl. destruct i. trivial.
     inversion H0.
-    
+
     case_eq (i <=? n).
     intro. apply (proj1 (Nat.leb_le i n)) in H3.
     simpl.
@@ -331,7 +341,7 @@ Proof.
     rewrite <- H0.
     rewrite (proj2 (Nat.eqb_eq n n)).
     trivial. trivial.
-    
+
     intros.
     apply le_plus_minus in H0. rewrite H2 in H0.
     rewrite H0.
@@ -377,7 +387,7 @@ Proof.
 
     apply le_n_S.
     apply le_plus_l.
-    
+
     apply (proj2 (not_true_iff_false (i <? S (i + length q)))) in H1.
     apply (proj1 (not_iff_compat (Nat.ltb_lt i (S (i + length q))))) in H1.
     case_eq (Nat.le_gt_cases (S (i + length q)) i).
@@ -386,7 +396,7 @@ Proof.
     intros.
     exfalso. apply H1. trivial.
     trivial.
-    
+
     intro.
     simpl.
     apply (proj2 (not_true_iff_false (i <=? n))) in H0.
@@ -435,7 +445,7 @@ Proof.
     trivial.
     apply IHq. 
     inversion H. trivial.
-    
+
   +  intros.
      simpl.
      rewrite (IHu1).
@@ -625,6 +635,78 @@ Inductive CorrectState : state -> Prop :=
     (exists u, ClosedN (length_env env) u /\ Some u = revCompCode c)
     -> CorrectEnv env -> CorrectStack stk -> CorrectState (c, env, stk).
 
+
+Lemma revStackEmpty : forall (stk : stack), revCompStack stk = Some [] -> stk = EmptyStack.
+Proof.
+  intros.
+  induction stk.
+  trivial.
+  simpl in H.
+  case_eq (revCompCode c).
+  intros. rewrite H0 in H.
+  case_eq (revCompEnv e). intros. rewrite H1 in H.
+  case_eq (revCompStack stk).
+  intros.
+  rewrite H2 in H.
+  inversion H.
+  intro. rewrite H2 in H. inversion H.
+  intro. rewrite H1 in H. inversion H.
+  intro.  rewrite H0 in H. inversion H.
+Qed.
+
+Lemma revEnvEmpty : forall (env : environment), revCompEnv env = Some [] -> env = EmptyEnv.
+Proof.
+  intros.
+  induction env.
+  trivial.
+  simpl in H.
+  clear IHenv1 IHenv2.
+  case_eq (revCompCode c).
+  intros.
+  rewrite H0 in H.
+  case_eq (revCompEnv env1).
+  intros. rewrite H1 in H.
+  case_eq (revCompEnv env2).
+  intros. rewrite H2 in H.
+  inversion H.
+  intros. rewrite H2 in H. inversion H.
+  intros. rewrite H1 in H. inversion H.
+  intros. rewrite H0 in H. inversion H.
+Qed.
+
+
+Lemma LengthRevEnv : forall (env : environment) (li : list de_brujin),
+  revCompEnv env = Some li -> List.length li = length_env env.
+Proof.
+  intro.
+  induction env.
+  intros.
+  simpl in H.
+  inversion H.
+  simpl. trivial.
+  
+  intros.
+  simpl in H.
+  case_eq (revCompCode c).
+  intros.
+  rewrite H0 in H.
+  simpl.
+  case_eq (revCompEnv env1).
+  intros.
+  rewrite H1 in H.
+  case_eq (revCompEnv env2).
+  intros.
+  rewrite H2 in H.
+  inversion H.
+  simpl.
+  apply eq_S.
+  apply IHenv2.
+  trivial.
+  intros. rewrite H2 in H. inversion H.
+  intros. rewrite H1 in H. inversion H.
+  intros. rewrite H0 in H. inversion H.
+Qed.
+
 Theorem CompInverse : forall (u : de_brujin), revCompState (Comp u, EmptyEnv, EmptyStack) = Some u.
 Proof.
   intro.
@@ -632,7 +714,7 @@ Proof.
   
   + trivial.
   
-  + simpl. 
+  + simpl.  
     simpl in IHu.
     destruct (revCompCode (Comp u)).
     rewrite subst_empty_trivial.
@@ -835,6 +917,360 @@ Proof.
                 rewrite H7 in H2.
                 inversion H2.
         ** intro.
-          rewrite H3 in H2.
+           rewrite H3 in H2.
           inversion H2.
 Qed.
+
+Lemma sub_0 : forall n, n-0 = n.
+Proof.
+  intro.
+  case_eq n.
+  intro.
+  simpl.
+  trivial.
+  intros.
+  simpl.
+  trivial.
+Qed.
+
+Print List.map.
+Print parallel_subst.
+
+Lemma inc_dec : forall (u : de_brujin) (l : list de_brujin),
+  decrement_free_vars (parallel_subst 1 (List.map increment_free_vars l) u) = parallel_subst 1 l u.
+Proof. 
+Admitted.
+
+Lemma sub_ineq : forall a b c,
+  a < b + c -> a >= b -> a - b < c.
+Proof.
+  intros.
+
+  rewrite <- (le_plus_minus_r b a) in H.
+  apply (plus_lt_reg_l (a-b) c b) in H.
+  trivial.
+  trivial.
+Qed.
+
+Lemma NotLt : forall n m, ~(n <= m) -> m < n.
+Admitted.
+
+
+Lemma ClosedIncrement : forall n u, ClosedN n u -> ClosedN (S n) (increment_free_vars u).
+Admitted.
+
+Lemma ClosedIncForall : forall n l, Forall (ClosedN n) l -> Forall (ClosedN (S n)) (map increment_free_vars l).
+Admitted.
+
+
+Lemma SubstClosed : forall (u : de_brujin) (n : nat) (l : list de_brujin),
+  Forall (ClosedN n) l -> ClosedN (max n (List.length l)) u -> ClosedN n (parallel_subst n l u).
+Proof.
+Admitted.
+(*
+  intro. intro. intro.
+  
+  generalize n l.
+  clear n l.
+  induction u.
+ 
+ +
+  intros.
+  simpl.
+  case_eq (n0 <=? n).
+  intro.
+  apply (Nat.leb_le) in H1.
+  case_eq (n <? n0 + length l).
+  simpl.
+  intro.
+  apply (Nat.ltb_lt) in H2.
+
+  apply (Forall_forall (ClosedN n0) l).
+  trivial.
+  apply nth_In.
+  apply sub_ineq.
+  trivial. trivial.
+  intros.
+  simpl.
+  apply ClosedN_Var.
+  apply NotLt.
+  intro.
+  
+  inversion H0.
+  clear n1 m H4 H5 H3.
+  
+  clear H4 H3 n1 m.
+  apply (lt_plus_trans n (length l) n0) in H5.
+  rewrite plus_comm in H5.
+  apply (Nat.ltb_lt) in H5.
+  rewrite H5 in H2.
+  inversion H2.
+  intro.
+  simpl.
+  apply ClosedN_Var.
+  apply NotLt.
+  intro.
+  apply Nat.leb_le in H2.
+  rewrite H2 in H1. inversion H1.
+  
++  intros.
+   simpl.
+   apply ClosedN_Abstraction.
+   inversion H0.
+   apply IHu.
+   apply ClosedIncForall.
+   trivial.
+   
+  Admitted.*)
+  
+Lemma ClosedEnv : forall (e : environment),
+  CorrectEnv e -> (revCompEnv e = None) \/ (exists liU, revCompEnv e = Some liU /\ (Forall Closed liU)).
+Proof.
+  intro.
+  induction e.
+  intro. right. exists []. simpl. split. trivial. apply Forall_nil.
+  intro.
+  simpl.
+  case_eq (revCompCode c).
+  intros.
+  case_eq (revCompEnv e1).
+  intros.
+  case_eq (revCompEnv e2).
+  intros.
+  right.
+  inversion H.
+  apply IHe1 in H8.
+  apply IHe2 in H6.
+  destruct H6.
+  rewrite H6 in H2. inversion H2.
+  destruct H6.
+  destruct H6.
+  destruct H8. rewrite H8 in H1. inversion H1.
+  destruct H8.
+  exists (parallel_subst 0 l d :: l0).
+  split.
+  trivial.
+  apply Forall_cons.
+  destruct H8.
+  rewrite H1 in H8.
+  inversion H8. clear H8.
+  rewrite <- H12 in H10.
+  rewrite <- H12.
+  apply SubstClosed.
+  trivial.
+  rewrite H2 in H6.
+  inversion H6. destruct H7. destruct H7.
+  rewrite H0 in H8.
+  inversion H8.
+  rewrite H14 in H7.
+  rewrite (LengthRevEnv e1). trivial. trivial. 
+  rewrite H2 in H6. inversion H6. trivial.
+  left. trivial.
+  intro. left. trivial.
+  intro. left. trivial.
+Qed.
+
+
+
+Lemma BetaFold : forall (l : list de_brujin) (u : de_brujin) (v : de_brujin),
+  Beta u v -> Beta (List.fold_left (fun cur toAdd => App cur toAdd) l u)
+  (List.fold_left (fun cur toAdd => App cur toAdd) l v).
+Proof.
+  intro.
+  induction l.
+  simpl. trivial.
+  
+  simpl.
+  intros.
+  apply IHl.
+  apply BetaAppL.
+  trivial.
+Qed.
+
+Theorem transition_beta : forall (u : de_brujin) (cur : state) (nxt : state),
+  stepKrivine cur = Some nxt -> revCompState cur = Some u -> CorrectState cur ->
+    revCompState cur = revCompState nxt \/ (exists (v : de_brujin), revCompState nxt = Some v /\ Beta u v). 
+Proof.
+  intros.
+  destruct cur.
+  destruct p.
+  destruct c.
+  
+  + simpl in H0. inversion H0.
+  
+  + destruct i.
+  
+    ++ left.
+       destruct n.
+       
+       * simpl in H.
+         destruct e. inversion H.
+         inversion H. destruct H.
+         simpl.
+         case_eq (revCompCode c0).
+         intros.
+         case_eq (revCompEnv e1).
+         intros.
+         case_eq (revCompEnv e2).
+         intros.
+         case_eq (revCompStack s).
+         intros.
+         simpl.
+         trivial.
+         trivial.
+         intros.
+         case_eq (revCompStack s).
+         intros.
+         simpl in H0.
+         rewrite H in H0.
+         rewrite H2 in H0.
+         rewrite H4 in H0.
+         inversion H0.
+         trivial.
+         trivial.
+         trivial.
+         
+      * simpl in H.
+        destruct e. inversion H.
+        inversion H. destruct H.
+        simpl.
+        case_eq (revCompCode c0).
+        case_eq (revCompEnv e1).
+        case_eq (revCompEnv e2).
+        case_eq (revCompStack s).
+        intros.
+        simpl.
+        inversion H1.
+        destruct H9.
+        destruct H9.
+        simpl in H12.
+        inversion H12. clear H12.
+        rewrite H14 in H9.
+        inversion H9.
+        simpl in H15.
+        rewrite (LengthRevEnv e2 l0).
+        apply (Nat.ltb_lt) in H15 as H17.
+        apply lt_S_n in H15.
+        apply Nat.ltb_lt in H15 as H16.
+        rewrite H16. rewrite H17.
+        rewrite sub_0. trivial.
+        trivial. intros. trivial. intros. trivial.
+        intros.
+        case_eq (revCompEnv e2).
+        intros.
+        simpl in H0.
+        rewrite H4 in H0.
+        rewrite H in H0.
+        case_eq (revCompCode c0).
+        intros.
+        rewrite H5 in H0. inversion H0.
+        intro. rewrite H5 in H0. inversion H0. trivial.
+        intros.
+        case_eq (revCompEnv e2).
+        intros.
+        simpl in H0. rewrite H in H0. inversion H0.
+        trivial.
+        
+      ++ simpl in H.
+         destruct s.
+         inversion H.
+         inversion H. clear H.
+         
+         right.
+         simpl.
+         case_eq (revCompCode c).
+         intros.
+         case_eq (revCompCode c0).
+         intros.
+         case_eq (revCompEnv e0).
+         intros.
+         case_eq (revCompEnv e).
+         intros.
+         case_eq (revCompStack s).
+         intros.
+         exists (fold_left (fun cur nxt0 : de_brujin => App cur nxt0) l1
+       (parallel_subst 0 (parallel_subst 0 l d0 :: l0) d)).
+       split.
+       trivial.
+       simpl in H0.
+       rewrite H in H0.
+       rewrite H2 in H0. rewrite H4 in H0. rewrite H5 in H0. rewrite H6 in H0.
+       inversion H0. clear H0.
+       apply BetaFold.
+
+       rewrite Subst_composite.
+       Print Beta.
+       rewrite <- (inc_dec d l0).
+       apply BetaStep.
+       inversion H1.
+       apply (ClosedEnv) in H11.
+       destruct H11.
+       rewrite H11 in H5. inversion H5.
+       
+       destruct H10. destruct H10. destruct H11.
+       destruct H11.
+       rewrite H11 in H5.
+       inversion H5.
+       rewrite H16 in H14. trivial.
+       
+       intros.
+       exfalso.
+       simpl in H0.
+       rewrite H in H0.
+       rewrite H2 in H0.
+       rewrite H4 in H0.
+       rewrite H5 in H0.
+       rewrite H6 in H0.
+       inversion H0.
+       intro.
+       simpl in H0.
+       rewrite H in H0. rewrite H2 in H0. rewrite H4 in H0. rewrite H5 in H0.
+       inversion H0.
+       intro.
+       simpl in H0.
+       rewrite H in H0. rewrite H2 in H0. rewrite H4 in H0.
+       case_eq (revCompEnv e).
+       intros.
+       rewrite H5 in H0. inversion H0.
+       intro. rewrite H5 in H0. inversion H0.
+       intro.
+       simpl in H0.
+       rewrite H in H0. rewrite H2 in H0.
+       case_eq (revCompEnv e).
+       intros. rewrite H4 in H0. inversion H0.
+       intro. rewrite H4 in H0. inversion H0.
+       intros.
+       simpl in H0. rewrite H in H0.
+       inversion H0.
+     
+     ++ left.
+        simpl in H.
+        inversion H. clear H.
+        simpl.
+        case_eq (revCompEnv e).
+        intros.
+        case_eq (revCompCode c).
+        intros.
+        case_eq (revCompCode c0).
+        intros.
+        case_eq (revCompStack s).
+        intros.
+        simpl.
+        trivial.
+        trivial.
+        trivial.
+        intro.
+        simpl in H0.
+        rewrite H in H0.
+        rewrite H2 in H0.
+        case_eq (revCompCode c0).
+        intros. rewrite H4 in H0. inversion H0.
+        trivial.
+        intro.
+        simpl in H0. rewrite H in H0.
+        case_eq (revCompCode c0).
+        intros. rewrite H2 in H0.
+        case_eq (revCompCode c). trivial. trivial.
+        intros. case_eq (revCompCode c). trivial. trivial.
+Qed.
+        
