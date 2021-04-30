@@ -1721,7 +1721,7 @@ Proof.
   intros.
   apply CorrectStateDecomp in H0 as H1.
   destruct H1.
-  Check transition_beta_lemma.
+
   rename x into u.
   apply (transition_beta_lemma u) in H.
   destruct H.
