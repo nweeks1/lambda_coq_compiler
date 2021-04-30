@@ -2,7 +2,7 @@ Require Import List.
 Import ListNotations.
 Require Import Arith.
 Require Import Logic.
-
+Require Import Psatz.
 Require Import Bool.
 
 Inductive de_brujin : Type :=
@@ -61,18 +61,17 @@ Fixpoint parallel_subst (i : nat) (liU : list de_brujin) (u : de_brujin) : de_br
   end
 .
 
-Fixpoint decrement_vars_greater (u : de_brujin) (n : nat) :=
+Fixpoint decrement_vars_greater (n : nat) (u : de_brujin):=
   match u with
     | Var i => if Nat.ltb n i then Var (i-1) else Var i
-    | App u v => App (decrement_vars_greater u n) (decrement_vars_greater v n)
-    | Abstraction u => Abstraction (decrement_vars_greater u (S n))
+    | App u v => App (decrement_vars_greater n u) (decrement_vars_greater n v)
+    | Abstraction u => Abstraction (decrement_vars_greater (S n) u)
   end.
 
-Definition decrement_free_vars (u : de_brujin) := decrement_vars_greater u 0.
 
 Inductive Beta : de_brujin -> de_brujin -> Prop :=
   | BetaStep : forall (u : de_brujin) (v : de_brujin), 
-    Beta (App (Abstraction u) v ) (decrement_free_vars (subst 0 (increment_free_vars v) u))
+    Beta (App (Abstraction u) v ) (decrement_vars_greater 0 (subst 0 (increment_free_vars v) u))
   | BetaAppL : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
       Beta t u -> Beta (App t v) (App u v)
   | BetaAppR : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
@@ -924,23 +923,22 @@ Qed.
 
 Lemma sub_0 : forall n, n-0 = n.
 Proof.
-  intro.
-  case_eq n.
-  intro.
-  simpl.
-  trivial.
-  intros.
-  simpl.
-  trivial.
+  lia.
 Qed.
 
-Print List.map.
-Print parallel_subst.
 
-Print decrement_vars_greater.
-Lemma inc_dec_single : forall u (n : nat), decrement_vars_greater (increment_greater n u) n = u.
+Lemma not_le : forall n m, ~ (n < m) -> m <= n.
 Proof.
-  intro.
+  lia.
+Qed.
+Lemma NotLt : forall n m, ~(n <= m) -> m < n.
+  lia.
+Qed.
+Lemma inc_dec_single_n : forall (n : nat) u, decrement_vars_greater n (increment_greater n u)= u.
+Proof.
+  intro. intro.
+  generalize n.
+  clear n.
   induction u.
   
   + intros.
@@ -963,37 +961,223 @@ Proof.
     trivial.
     intro.
     exfalso.
-    Admitted.
+    apply (le_not_lt n n0).
+    apply le_Sn_le.
+    apply not_le .
+    intro.
+    apply Nat.ltb_lt in H1.
+    rewrite H1 in H0. inversion H0.
     
+    apply NotLt.
+    intro.
+    apply le_lt_or_eq in H1.
+    destruct H1.
+    apply Nat.ltb_lt in H1.
+    rewrite H1 in H. inversion H.
+    rewrite H1 in H0.
+
+    pose proof (le_n n0) as H2.
     
-Lemma inc_dec : forall (u : de_brujin) (l : list de_brujin),
-  decrement_free_vars (parallel_subst 0 (List.map increment_free_vars l) u) 
-  = parallel_subst 0 l u.
-Proof. 
+    apply (le_lt_n_Sm n0 n0) in H2.
+    apply Nat.ltb_lt in H2.
+    rewrite H2 in H0. inversion H0.
+    
+  + intros.
+    simpl.
+    rewrite IHu.
+    trivial.
+  
+  + intros.
+    simpl.
+    rewrite IHu1. rewrite IHu2.
+    trivial.
+Qed.
+Lemma inc_dec_single : forall u, decrement_vars_greater 0 (increment_free_vars u) = u.
+Proof.
+  intros.
+  
+  rewrite inc_dec_single_n.
+  trivial.
+Qed.
+
+
+Lemma inc_comm_n : forall u n m,
+  m <= n -> increment_greater m (increment_greater n u) = increment_greater (S n) (increment_greater m u).
+Proof.
   intro.
+  
   induction u.
   
   + intros.
     simpl.
-    rewrite map_length.
-    case_eq (n <? length l).
+    case_eq (n <? m).
     intro.
-    rewrite map_nth.
-Admitted.
+    apply Nat.ltb_lt in H0.
 
-Lemma sub_ineq : forall a b c,
-  a < b + c -> a >= b -> a - b < c.
+    apply (Nat.lt_le_trans n m n0) in H0 as H1.
+    apply Nat.ltb_lt in H1.
+    rewrite H1.
+
+    simpl.
+    apply Nat.ltb_lt in H0.
+    rewrite H0.
+    apply Nat.ltb_lt in H1.
+
+    apply Nat.lt_lt_succ_r in H1.
+    apply Nat.ltb_lt in H1. rewrite H1. trivial. trivial.
+    intro.
+    simpl.
+    case_eq (n <? n0).
+    intro.
+    apply Nat.ltb_lt in H1.
+
+    apply lt_n_S in H1.
+    apply Nat.ltb_lt in H1.
+    rewrite H1.
+    simpl.
+    rewrite H0.
+    trivial.
+    intro.
+    simpl.
+    case_eq (S n <? m).
+    intro.
+    apply Nat.ltb_lt in H2.
+
+    apply (Nat.lt_le_trans (S n) m n0) in H2.
+    apply Nat.lt_lt_succ_r in H2.
+    apply Nat.ltb_lt in H2.
+    rewrite H2.
+    trivial.
+    trivial.
+    intro.
+    case_eq (S n <? (S n0)).
+    intro.
+    apply Nat.ltb_lt in H3.
+
+    apply lt_S_n in H3.
+    apply Nat.ltb_lt in H3. rewrite H3 in H1. inversion H1.
+    trivial.
+    
+    
+  + intros.
+    simpl.
+    rewrite IHu.
+    trivial.
+    lia.
+  
+  + intros.
+    simpl.
+    rewrite IHu1. rewrite IHu2. trivial.
+    trivial. trivial.
+Qed.
+
+Lemma inc_comm : forall u n,
+  increment_free_vars (increment_greater n u) = increment_greater (S n) (increment_free_vars u).
 Proof.
   intros.
+  apply inc_comm_n.
+  lia.
+Qed.
 
-  rewrite <- (le_plus_minus_r b a) in H.
-  apply (plus_lt_reg_l (a-b) c b) in H.
+Lemma inc_comm_li : forall l n,
+ map increment_free_vars (map (increment_greater n) l) = map (increment_greater (S n)) (map increment_free_vars l).
+Proof.
+
+  intro.
+  induction l.
+  intros.
+  simpl.
   trivial.
+  intros.
+  simpl.
+  rewrite IHl.
+  rewrite inc_comm.
   trivial.
 Qed.
 
-Lemma NotLt : forall n m, ~(n <= m) -> m < n.
-Admitted.
+Lemma inc_dec_n : forall u n l, 
+  ClosedN (n + length l) u -> decrement_vars_greater n (parallel_subst n (List.map (increment_greater n) l) u) = parallel_subst n l u.
+
+Proof.
+  intro.
+  
+  induction u.
+  
+  + intros.
+    inversion H.
+    simpl.
+    case_eq (n0 <=? n).
+    intros.
+    simpl.
+    apply Nat.leb_le in H3.
+    rewrite map_length.
+    case_eq (n <? n0 + length l).
+    intro.
+    apply Nat.ltb_lt in H4.
+
+    rewrite (nth_indep (map (increment_greater n0) l)  (Var 0) (increment_greater n0 (Var 0))).
+    rewrite map_nth.
+    rewrite inc_dec_single_n.
+    trivial.
+    rewrite map_length.
+    lia.
+    intro.
+    apply Nat.ltb_lt in H2.
+    rewrite H2 in H4. inversion H4.
+    intro.
+    
+    simpl.
+    case_eq (n0 <? n).
+    intro.
+    exfalso.
+    apply Nat.ltb_lt in H4.
+
+    apply le_Sn_le in H4.
+    apply Nat.leb_le in H4.
+    rewrite H4 in H3. inversion H3.
+    trivial.
+   
+  + intros.
+    simpl.
+    rewrite <- (IHu (S n) (map increment_free_vars l)).
+
+    rewrite inc_comm_li.
+    trivial.
+    inversion H.
+
+    rewrite plus_comm.
+    rewrite <- plus_n_Sm.
+    rewrite plus_comm.
+    rewrite map_length.
+    trivial.
+  
+  + intros.
+    inversion H. 
+    simpl.
+    rewrite (IHu1).
+    rewrite IHu2.
+    trivial.
+    trivial.
+    trivial.
+Qed.
+     
+    
+(* Change to more general dec/inc ! *)
+Lemma inc_dec : forall (u : de_brujin) (l : list de_brujin),
+  ClosedN (length l) u -> decrement_vars_greater 0 (parallel_subst 0 (List.map increment_free_vars l) u) 
+  = parallel_subst 0 l u.
+Proof. 
+  intros.
+  apply inc_dec_n.
+
+  rewrite Nat.add_0_l. trivial.
+Qed.
+Lemma sub_ineq : forall a b c,
+  a < b + c -> a >= b -> a - b < c.
+Proof.
+  lia.
+Qed.
+
 
 
 Lemma ClosedIncrement : forall n m u, ClosedN n u -> ClosedN (S n) (increment_greater m u).
@@ -1052,69 +1236,64 @@ Proof.
 Qed.
   
 Lemma SubstClosed : forall (u : de_brujin) (n : nat) (l : list de_brujin),
-  Forall (ClosedN n) l -> ClosedN (max n (List.length l)) u -> ClosedN n (parallel_subst n l u).
+  Forall (ClosedN n) l -> ClosedN (n + length l) u -> ClosedN n (parallel_subst n l u).
 Proof.
-Admitted.
-(*
-  intro. intro. intro.
-  
-  generalize n l.
-  clear n l.
+  intro.
   induction u.
- 
- +
-  intros.
-  simpl.
-  case_eq (n0 <=? n).
-  intro.
-  apply (Nat.leb_le) in H1.
-  case_eq (n <? n0 + length l).
-  simpl.
-  intro.
-  apply (Nat.ltb_lt) in H2.
+  
+  +
+    intros.
+    simpl.
+    inversion H0.
+    case_eq (n0 <=? n).
+    intro.
+    simpl.
+    apply Nat.leb_le in H4.
+    case_eq (n <? n0 + length l).
+    intro.
+    apply Nat.ltb_lt in H5.
 
-  apply (Forall_forall (ClosedN n0) l).
-  trivial.
-  apply nth_In.
-  apply sub_ineq.
-  trivial. trivial.
-  intros.
-  simpl.
-  apply ClosedN_Var.
-  apply NotLt.
-  intro.
+    apply Forall_nth.
+    trivial.
+    lia.
+    intro.
+    apply Nat.ltb_lt in H3.
+    rewrite H3 in H5. inversion H5.
+    intro.
+    simpl.
+    apply ClosedN_Var.
+
+    apply NotLt.
+    intro.
+    apply Nat.leb_le in H5. rewrite H5 in H4. inversion H4.
   
-  inversion H0.
-  clear n1 m H4 H5 H3.
+  + intros.
+    simpl.
+    apply ClosedN_Abstraction.
+    apply IHu.
+    apply ClosedIncForall.
+    trivial.
+    inversion H0.
+    rewrite map_length.
+
+    rewrite plus_comm in H3.
+    rewrite plus_n_Sm in H3.
+    rewrite plus_comm in H3.
+    trivial.
   
-  clear H4 H3 n1 m.
-  apply (lt_plus_trans n (length l) n0) in H5.
-  rewrite plus_comm in H5.
-  apply (Nat.ltb_lt) in H5.
-  rewrite H5 in H2.
-  inversion H2.
-  intro.
-  simpl.
-  apply ClosedN_Var.
-  apply NotLt.
-  intro.
-  apply Nat.leb_le in H2.
-  rewrite H2 in H1. inversion H1.
-  
-+  intros.
-   simpl.
-   apply ClosedN_Abstraction.
-   inversion H0.
-   apply IHu.
-   apply ClosedIncForall.
-   trivial.
-   
-  Admitted.*)
-  
+  + intros.
+    apply ClosedN_App.
+    apply IHu1.
+    trivial.
+    inversion H0. trivial.
+    apply IHu2. trivial. inversion H0. trivial.
+Qed.
+    
+
 Lemma ClosedEnv : forall (e : environment),
   CorrectEnv e -> (revCompEnv e = None) \/ (exists liU, revCompEnv e = Some liU /\ (Forall Closed liU)).
 Proof.
-  intro.
+ intro.
   induction e.
   intro. right. exists []. simpl. split. trivial. apply Forall_nil.
   intro.
@@ -1176,12 +1355,54 @@ Proof.
 Qed.
 
 
+Lemma ClosedIncClosed_n : forall u n, ClosedN n u -> ClosedN n (increment_greater n u).
+Proof.
+  intro.
+  induction u.
+  
+  + intros.
+   simpl.
+   inversion H.
+   apply Nat.ltb_lt in H2.
+   rewrite H2.
+   trivial.
+   
+ + intros.
+   simpl.
+   apply ClosedN_Abstraction.
+   apply IHu.
+   inversion H.
+   trivial.
+  
+  + intros.
+  simpl.
+  apply ClosedN_App.
+  apply IHu1.
+  inversion H. trivial.
+  apply IHu2. inversion H. trivial.
+Qed.
+
 Lemma ClosedIncClosed : forall u, Closed u -> Closed (increment_free_vars u).
 Proof.
-Admitted.
-
+  intros.
+  apply ClosedIncClosed_n.
+  trivial.
+Qed.
 Lemma ClosedIncClosedList : forall li, Forall Closed li -> Forall Closed (List.map increment_free_vars li).
-Admitted.
+Proof.
+  intro.
+  induction li.
+  trivial.
+  intro.
+  inversion H.
+  simpl.
+  apply Forall_cons.
+  apply ClosedIncClosed.
+  trivial.
+  apply IHli.
+  trivial.
+Qed.
+
 Theorem transition_beta : forall (u : de_brujin) (cur : state) (nxt : state),
   stepKrivine cur = Some nxt -> revCompState cur = Some u -> CorrectState cur ->
     revCompState cur = revCompState nxt \/ (exists (v : de_brujin), revCompState nxt = Some v /\ Beta u v). 
@@ -1301,7 +1522,7 @@ Proof.
        inversion H0. clear H0.
        apply BetaFold.
 
-        (* TODO : FIX THIS !!! *)
+
        rewrite <- (inc_dec d).
        simpl.
        rewrite (Subst_composite 0 (increment_free_vars (parallel_subst 0 l d0)) (map increment_free_vars l0) d).
@@ -1318,6 +1539,20 @@ Proof.
        destruct H10. destruct H10. destruct H11.
        apply ClosedIncClosedList.
        trivial.
+       rewrite <- H3 in correct_nxt.
+       inversion correct_nxt.
+       destruct H10.
+       destruct H10.
+       rewrite H in H13.
+       inversion H13. clear H13.
+       rewrite H15 in H10.
+       simpl.
+       simpl in H10.
+
+       rewrite (LengthRevEnv e l0).
+       trivial.
+       trivial.
+       
        intro.
        simpl in H0.
        rewrite H6 in H0.
@@ -1403,4 +1638,3 @@ Proof.
         case_eq (revCompCode c). trivial. trivial.
         intros. case_eq (revCompCode c). trivial. trivial.
 Qed.
-        
