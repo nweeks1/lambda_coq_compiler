@@ -636,6 +636,80 @@ Inductive CorrectState : state -> Prop :=
     -> CorrectEnv env -> CorrectStack stk -> CorrectState (c, env, stk).
 
 
+Lemma CorrectEnvDecomp : forall (env : environment),
+  CorrectEnv env -> (exists l, revCompEnv env = Some l).
+Proof.
+  intro.
+  induction env.
+  intro.
+  simpl.
+  exists [].
+  trivial.
+  intros.
+  inversion H.
+  clear H0 H1 H2 c0 e0 nxtEnv.
+  
+  simpl.
+  destruct H4.
+  destruct H0.
+  rewrite <- H1.
+  apply IHenv1 in H5.
+  destruct H5.
+  rewrite H2.
+  apply IHenv2 in H3.
+  destruct H3.
+  rewrite H3.
+  exists (parallel_subst 0 x0 x :: x1).
+  trivial.
+Qed.
+
+Lemma CorrectStackDecomp : forall (stk : stack),
+  CorrectStack stk -> (exists l, revCompStack stk = Some l).
+Proof.
+  intro.
+  induction stk.
+  intro.
+  simpl.
+  exists [].
+  trivial.
+  intro.
+  inversion H.
+  simpl.
+  destruct H5.
+  destruct H5.
+  rewrite <- H6.
+  apply CorrectEnvDecomp in H4.
+  destruct H4.
+  rewrite H4.
+  apply IHstk in H3.
+  destruct H3.
+  rewrite H3.
+  exists (parallel_subst 0 x0 x :: x1).
+  trivial.
+Qed.
+  
+Lemma CorrectStateDecomp : forall (st : state), 
+CorrectState st ->(exists u, revCompState st = Some u).
+Proof.
+  intros.
+  destruct st.
+  destruct p.
+  simpl.
+  inversion H.
+  destruct H3.
+  destruct H3.
+  rewrite <- H6.
+  apply CorrectEnvDecomp in H4.
+  apply CorrectStackDecomp in H5.
+  destruct H4.
+  destruct H5.
+  rewrite H4.
+  rewrite H5.
+  exists (fold_left (fun cur nxt : de_brujin => App cur nxt) x1 (parallel_subst 0 x0 x)).
+  trivial.
+Qed.
+  
+
 Lemma revStackEmpty : forall (stk : stack), revCompStack stk = Some [] -> stk = EmptyStack.
 Proof.
   intros.
@@ -1403,7 +1477,7 @@ Proof.
   trivial.
 Qed.
 
-Theorem transition_beta : forall (u : de_brujin) (cur : state) (nxt : state),
+Lemma transition_beta_lemma : forall (u : de_brujin) (cur : state) (nxt : state),
   stepKrivine cur = Some nxt -> revCompState cur = Some u -> CorrectState cur ->
     revCompState cur = revCompState nxt \/ (exists (v : de_brujin), revCompState nxt = Some v /\ Beta u v). 
 Proof.
@@ -1637,4 +1711,32 @@ Proof.
         intros. rewrite H2 in H0.
         case_eq (revCompCode c). trivial. trivial.
         intros. case_eq (revCompCode c). trivial. trivial.
+Qed.
+
+Theorem transition_beta : forall cur nxt,
+  stepKrivine cur = Some nxt -> CorrectState cur -> 
+    revCompState cur = revCompState nxt 
+    \/ (exists u, revCompState cur = Some u /\ (exists v, revCompState nxt = Some v /\ Beta u v)).
+Proof.
+  intros.
+  apply CorrectStateDecomp in H0 as H1.
+  destruct H1.
+  Check transition_beta_lemma.
+  rename x into u.
+  apply (transition_beta_lemma u) in H.
+  destruct H.
+  left. trivial.
+  right.
+  destruct H.
+  exists u.
+  split.
+  trivial.
+  exists x.
+  split.
+  destruct H.
+  trivial.
+  destruct H.
+  trivial.
+  trivial.
+  trivial.
 Qed.
