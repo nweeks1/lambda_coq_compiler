@@ -4,104 +4,23 @@ Require Import Arith.
 Require Import Logic.
 Require Import Psatz.
 Require Import Bool.
+Require Import definitions.
+Require Import lemmas.
 
-Inductive de_brujin : Type :=
-  | Var : nat -> de_brujin
-  | Abstraction : de_brujin -> de_brujin
-  | App : de_brujin -> de_brujin -> de_brujin
-.
-
-(**
- On a ClosedN n u ssi toutes les variables libres de u sont < n.
- Ainsi, u est clos ssi closedN 0 u.
-**)
-
-Inductive ClosedN : nat -> de_brujin -> Prop :=
-  | ClosedN_Var : forall n m : nat, m < n -> ClosedN n (Var m)
-  | ClosedN_App : forall (n : nat) (u : de_brujin) (v : de_brujin),
-              ClosedN n u -> ClosedN n v -> ClosedN n (App u v)
-  | ClosedN_Abstraction : forall (n : nat) (u : de_brujin),
-              ClosedN (S n) u -> ClosedN n (Abstraction u)
-.
-
-Definition Closed : de_brujin -> Prop := ClosedN 0.
-
-(** Incrémente variables libres de u avec indice >= n **)
-Fixpoint increment_greater (n : nat) (u : de_brujin) : de_brujin :=
-  match u with
-    | Var i => if Nat.ltb i n then Var i else Var (S i)
-    | App v w => App (increment_greater n v) (increment_greater n w)
-    | Abstraction v => Abstraction (increment_greater (S n) v)
-  end
-.
-
-Definition increment_free_vars := increment_greater 0.
-
-
-Fixpoint subst (n : nat) (t : de_brujin) (u : de_brujin) :=
-  match u with
-    | Var i => 
-        if Nat.eqb i n then t else u
-    | App v w => 
-        App (subst n t v) (subst n t w)
-    | Abstraction v =>
-        Abstraction (subst (S n) (increment_free_vars t) v)
-  end
-.
-
-
-Fixpoint parallel_subst (i : nat) (liU : list de_brujin) (u : de_brujin) : de_brujin :=
-  match u with
-    | Var j => 
-      if (andb (Nat.leb i j) (Nat.ltb j (i + List.length liU))) then
-       List.nth (j-i) liU (Var 0) 
-       else Var j
-    | App v w => App (parallel_subst i liU v) (parallel_subst i liU w)
-    | Abstraction v => Abstraction (parallel_subst (S i) (List.map increment_free_vars liU) v)
-  end
-.
-
-Fixpoint decrement_vars_greater (n : nat) (u : de_brujin):=
-  match u with
-    | Var i => if Nat.ltb n i then Var (i-1) else Var i
-    | App u v => App (decrement_vars_greater n u) (decrement_vars_greater n v)
-    | Abstraction u => Abstraction (decrement_vars_greater (S n) u)
-  end.
-
-
-Inductive Beta : de_brujin -> de_brujin -> Prop :=
-  | BetaStep : forall (u : de_brujin) (v : de_brujin), 
-    Beta (App (Abstraction u) v ) (decrement_vars_greater 0 (subst 0 (increment_free_vars v) u))
-  | BetaAppL : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
-      Beta t u -> Beta (App t v) (App u v)
-  | BetaAppR : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
-      Beta t v -> Beta (App u t) (App u v)
-  | BetaAbst : forall (u : de_brujin) (v : de_brujin),
-      Beta u v -> Beta (Abstraction (increment_free_vars u)) (Abstraction (increment_free_vars v))
-.
-
-Inductive BetaS : de_brujin -> de_brujin -> Prop :=
-  | BetaSRefl : forall (u : de_brujin),
-    BetaS u u
-  | BetaSStep : forall (t : de_brujin) (u : de_brujin) (v : de_brujin),
-    Beta t u -> BetaS u v -> BetaS t v
-.
-
+(** Le prédicat C[[.]] est croissant **)
 Theorem ClosedIncreasing : forall (n : nat) (u : de_brujin), ClosedN n u -> ClosedN (S n) u.
 Proof.
-  
   intro.
   intro.
   generalize n.
   clear n.
-  
+
   induction u.
-  
+
   + intros.
     inversion H.
     apply ClosedN_Var.
-    apply le_S.
-    trivial.
+    lia.
   
   + intros.
     inversion H.
@@ -123,6 +42,8 @@ Proof.
   intros. apply ClosedIncreasing. apply IHn. trivial.
 Qed.
 
+(** Si C[[n]](u), alors en notant v le lambda-terme obtenu en incrémentant toutes les variables >= m de u, 
+C[[n+1]](v)**)
 Lemma closedN_incrementM : forall (n : nat) (m : nat) (u : de_brujin), 
   ClosedN n u -> ClosedN (S n) (increment_greater m u).
 Proof.
@@ -130,56 +51,54 @@ Proof.
   generalize n m.
   clear n m.
   induction u.
-  intros.
-  simpl.
-  inversion H.
-  clear m0 n1 H1 H0.
-  case_eq (n <? m).
-  intro.
-  apply ClosedN_Var.
-  apply lt_S. trivial.
-  intro.
-  apply ClosedN_Var. apply lt_n_S. trivial.
   
-  intros.
-  simpl.
-  apply ClosedN_Abstraction.
-  apply IHu.
-  inversion H.
-  trivial.
+  + intros.
+    simpl.
+    inversion H.
+    clear m0 n1 H1 H0.
+    case_eq (n <? m); intro; apply ClosedN_Var; lia.
+    
+  + intros.
+    simpl.
+    apply ClosedN_Abstraction.
+    apply IHu.
+    inversion H.
+    trivial.
   
-  intros.
-  simpl.
-  apply ClosedN_App.
-  inversion H.
-  apply IHu1. trivial.
-  apply IHu2. inversion H. trivial.
-Qed.
-  
-
-Lemma not_lt_0 : forall (n : nat), ~(n < 0).
-  intro.
-  intro.
-  inversion H.
+  + intros.
+    simpl.
+    apply ClosedN_App.
+    inversion H.
+    apply IHu1. trivial.
+    apply IHu2. inversion H. trivial.
 Qed.
 
-Lemma not_lt_eq : forall (n : nat) (m : nat), n < m -> Nat.eqb n m = false.
+(** Pareil mais pour tous les termes d'une liste de lambda-termes **)
+Lemma ClosedIncForall : forall n l, Forall (ClosedN n) l -> Forall (ClosedN (S n)) (map increment_free_vars l).
 Proof.
-  intro. induction n.
+  intro.
+  intro.
+  generalize n.
+  clear n.
+  
+  induction l.
+  intros.
+  simpl.
+  trivial.
+  
   intros.
   simpl.
   inversion H.
-  trivial. trivial.
-  intros.
-  destruct m.
+  apply Forall_cons.
+  apply closedN_incrementM .
   trivial.
-  simpl.
-  apply IHn.
-  apply le_S_n. trivial.
+  apply IHl.
+  trivial.
 Qed.
 
 
-Lemma ClosedN_subst : forall (n : nat) (t : de_brujin) (u : de_brujin),
+(** Si C[[n]](u), alors u[[n <- t]] = u **)
+Theorem ClosedN_subst : forall (n : nat) (t : de_brujin) (u : de_brujin),
   ClosedN n u -> subst n t u = u.
 Proof.
   intro. intro. intro.
@@ -191,6 +110,7 @@ Proof.
     simpl.
     case_eq (Nat.eqb n0 n1).
     clear H n2 m H1 H0.
+    
     rewrite (not_lt_eq n0 n1).
     intro. inversion H.
     trivial.
@@ -210,7 +130,7 @@ Proof.
     inversion H.  trivial.  inversion H. trivial.
 Qed.
 
-
+(** Lemme pour n = 0, et donc décrit que substituer une variable par une autre dans un combinateur ne fait rien**)
 Lemma Closed_subst : forall (n : nat) (t : de_brujin) (u : de_brujin),
   Closed u -> subst n t u = u.
 Proof.
@@ -220,6 +140,7 @@ Proof.
   trivial.
 Qed.
 
+(** u[[n <- [[]]]] = u **)
 Theorem subst_empty_trivial : forall (i : nat) (u : de_brujin),
     parallel_subst i nil u = u.
 Proof.
@@ -234,8 +155,8 @@ Proof.
     intro.
     case_eq (n <? i).
     intro.
-    apply (proj1 (Nat.leb_le i n)) in H.
-    apply (proj1 (Nat.ltb_lt n i)) in H0.
+    apply Nat.leb_le in H.
+    apply Nat.ltb_lt in H0.
     exfalso.
     apply (le_not_lt i n H).
     trivial.
@@ -252,6 +173,7 @@ Proof.
     trivial.
 Qed.
 
+(** Si C[[i]](u), alors on a le même résultat que plus haut en substituant par une liste **)
 Theorem ClosedN_subst_trivial : forall (i : nat) (liU : list de_brujin) (u : de_brujin),
   ClosedN i u -> parallel_subst i liU u = u.
 Proof.
@@ -265,7 +187,7 @@ Proof.
     simpl.
     case_eq (i <=? n).
     intro.
-    apply (proj1 (Nat.leb_le i n)) in H3.
+    apply Nat.leb_le in H3.
     exfalso. apply (le_not_lt i n H3). trivial.
     trivial.
 
@@ -279,33 +201,7 @@ Proof.
     rewrite IHu1. rewrite IHu2. trivial. trivial. trivial.
 Qed.
 
-Lemma minus_0_le : forall (n : nat) (m : nat), n-m = 0 -> n <= m.
-Proof.
-  intro.
-  induction n.
-  simpl. intros. induction m. trivial. apply le_S. trivial.
-  intro. induction m.
-  intro.
-  inversion H.
-  intro.
-  inversion H.
-  apply le_n_S. apply IHn. trivial.
-Qed.
-
-Lemma lt_add : forall (i : nat) (n : nat) (m : nat), i+n < i+m -> n < m.
-Proof.
-  intro.
-  induction i.
-  intros.
-  simpl in H. trivial.
-  intros.
-  rewrite Nat.add_succ_l in H.
-  rewrite Nat.add_succ_l in H.
-  apply lt_S_n in H.
-  apply IHi. trivial.
-Qed.
-
-
+(** Décrit le lemme de composition de la question I.4 **)
 Theorem Subst_composite : forall (i : nat) (u0 : de_brujin) (q : list de_brujin) (u : de_brujin),
   List.Forall (ClosedN i) q -> parallel_subst i (u0 :: q) u = subst i u0 (parallel_subst (S i) q u).
 Proof.
@@ -317,10 +213,10 @@ Proof.
   + intros.
     simpl.
     case_eq (i <=? n).
-    intro. simpl. apply (proj1 (Nat.leb_le i n)) in H0.
+    intro. simpl. apply Nat.leb_le in H0.
     case_eq (n <? i + S (length q)).
     intro. simpl.
-    apply (proj1 (Nat.ltb_lt n (i + S (length q)))) in H1.
+    apply Nat.ltb_lt in H1.
     case_eq (n-i).
     intro. destruct n.
     simpl. destruct i. trivial.
@@ -454,7 +350,7 @@ Proof.
      trivial. trivial.
 Qed.
 
-
+(** Passage au contexte de ->* à gauche **)
 Theorem BetaSContextL : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
   BetaS t u -> BetaS (App t v) (App u v).
 Proof.
@@ -467,7 +363,7 @@ Proof.
   trivial.
 Qed.
 
-
+(** Passage au contexte de ->* à droite **)
 Theorem BetaSContextR : forall (u : de_brujin) (v : de_brujin) (t : de_brujin),
   BetaS t v -> BetaS (App u t) (App u v).
 Proof.
@@ -480,6 +376,7 @@ Proof.
   trivial.
 Qed.
 
+(** Passage au contexte de ->* pour les abstractions**)
 Theorem BetaSContextAbst : forall (t : de_brujin) (u : de_brujin),
   BetaS t u -> BetaS (Abstraction (increment_free_vars t)) (Abstraction (increment_free_vars u)).
 Proof.
@@ -492,150 +389,7 @@ Proof.
   trivial.
 Qed.
 
-Inductive instruction : Type := 
-  | Access : nat -> instruction
-  | Grab : instruction
-  | Push : code -> instruction
-  
-with code : Type :=
-  | EmptyCode : code
-  | ConsCode : instruction -> code -> code.
-  
-Inductive environment : Type :=
-  | EmptyEnv : environment
-  | ConsEnv : code -> environment -> environment -> environment
-.
-
-Inductive stack : Type :=
-  | EmptyStack : stack
-  | ConsStack : code -> environment -> stack -> stack
-.
-
-Definition state := (code * environment * stack) % type.
-
-Definition stepKrivine (st : state) : option state :=
-  match st with
-    | (c, env, stk) => 
-      match c with
-        | EmptyCode => None
-        | ConsCode inst nxtCode =>
-          match inst with
-            | Access 0 =>
-              match env with
-                | EmptyEnv => None
-                | ConsEnv c0 e0 _ => Some (c0, e0, stk)
-              end
-            | Access (S n) =>
-              match env with
-                | EmptyEnv => None
-                | ConsEnv c0 e0 e' => Some (ConsCode (Access n) EmptyCode, e', stk)
-              end
-            | Push c' => 
-              Some (nxtCode, env, ConsStack c' env stk)
-            | Grab => 
-              match stk with
-                | EmptyStack => None
-                | ConsStack c0 e0 nxtStk => Some (nxtCode, ConsEnv c0 e0 env, nxtStk)
-              end
-          end
-      end
-  end. 
-
-Fixpoint Comp (u : de_brujin) : code :=
-  match u with
-    | Abstraction t => ConsCode Grab (Comp t)
-    | App t u => ConsCode (Push (Comp u)) (Comp t)
-    | Var n => ConsCode (Access n) EmptyCode
-  end.
-
-Fixpoint revCompCode (c : code) : option de_brujin :=
-  match c with
-    | EmptyCode => None
-    | ConsCode instr nxtCode =>
-      match instr with
-        | Access n => Some (Var n)
-        | Push c' =>
-          match revCompCode c', revCompCode nxtCode with
-            | None, _ => None
-            | _, None => None
-            | Some v, Some u => Some (App u v)
-          end
-        | Grab  =>
-          match revCompCode nxtCode with
-            | None => None
-            | Some u => Some (Abstraction u)
-          end
-      end
-  end.
-
-Fixpoint revCompEnv (env : environment) : option (list de_brujin) :=
-  match env with
-    | EmptyEnv => Some []
-    | ConsEnv c0 e0 e => 
-      match revCompCode c0 with
-        | None => None
-        | Some u => 
-          match revCompEnv e0, revCompEnv e with
-            | None, _ => None
-            | _, None => None
-            | Some substc0, Some substRest =>
-              Some ( (parallel_subst 0 substc0 u) :: substRest)
-          end
-      end
-  end.
-
-Fixpoint revCompStack (stk : stack) : option (list de_brujin) :=
-  match stk with
-    | EmptyStack => Some []
-    | ConsStack c0 e0 nxtStk => 
-      match revCompCode c0, revCompEnv e0, revCompStack nxtStk with
-        | None, _, _ | _, None, _ | _, _, None => None
-        | Some u, Some liU, Some liStk => Some ((parallel_subst 0 liU u) :: liStk)
-      end
-  end.
-
-
-Definition revCompState (st : state) : option de_brujin :=
-  match st with
-    | (c, e, stk) => 
-      match revCompCode c, revCompEnv e, revCompStack stk with
-        | None, _, _ | _, None, _ | _, _, None => None
-        | Some u, Some liU, Some liStk =>
-         Some (List.fold_left (fun cur nxt => App cur nxt) liStk (parallel_subst 0 liU u))
-      end
-  end.
-
-Fixpoint length_stack (stk : stack) : nat :=
-  match stk with
-    | EmptyStack => 0
-    | ConsStack c0 e0 nxtStk => 1 + length_stack nxtStk
-  end.
-
-Fixpoint length_env (env : environment) : nat :=
-  match env with
-    | EmptyEnv => 0
-    | ConsEnv c0 e0 nxtEnv => 1 + length_env nxtEnv
-  end.
-
-Inductive CorrectEnv : environment -> Prop :=
-  | CorrectEmptyEnv : CorrectEnv EmptyEnv
-  | CorrectConsEnv : forall (c0 : code) (e0 : environment) (nxtEnv : environment),
-    CorrectEnv nxtEnv -> (exists u, ClosedN (length_env e0) u /\ Some u = revCompCode c0)
-    -> CorrectEnv e0 -> CorrectEnv (ConsEnv c0 e0 nxtEnv).
-
-Inductive CorrectStack : stack -> Prop :=
-  | CorrectEmptyStk : CorrectStack EmptyStack
-  | CorrectConsStk : forall (c0 : code) (e0 : environment) (nxtStk : stack),
-    CorrectStack nxtStk -> CorrectEnv e0
-   -> (exists u, ClosedN (length_env e0) u /\ Some u = revCompCode c0)
-    -> CorrectStack (ConsStack c0 e0 nxtStk).
-
-Inductive CorrectState : state -> Prop :=
-  | CorrectSt : forall (c : code) (env : environment) (stk : stack),
-    (exists u, ClosedN (length_env env) u /\ Some u = revCompCode c)
-    -> CorrectEnv env -> CorrectStack stk -> CorrectState (c, env, stk).
-
-
+(** Pour les environnements corrects, la fonction tau ne peut pas renvoyer None **)
 Lemma CorrectEnvDecomp : forall (env : environment),
   CorrectEnv env -> (exists l, revCompEnv env = Some l).
 Proof.
@@ -663,6 +417,7 @@ Proof.
   trivial.
 Qed.
 
+(** De même pour les stacks **)
 Lemma CorrectStackDecomp : forall (stk : stack),
   CorrectStack stk -> (exists l, revCompStack stk = Some l).
 Proof.
@@ -687,8 +442,9 @@ Proof.
   exists (parallel_subst 0 x0 x :: x1).
   trivial.
 Qed.
-  
-Lemma CorrectStateDecomp : forall (st : state), 
+
+(** Montre que tau est valide pour les états (i.e ne renvoie jamais None ) **)
+Theorem CorrectStateDecomp : forall (st : state), 
 CorrectState st ->(exists u, revCompState st = Some u).
 Proof.
   intros.
@@ -710,6 +466,7 @@ Proof.
 Qed.
   
 
+(** Si tau(stk) = [[]] alors stk est vide **) 
 Lemma revStackEmpty : forall (stk : stack), revCompStack stk = Some [] -> stk = EmptyStack.
 Proof.
   intros.
@@ -728,6 +485,7 @@ Proof.
   intro.  rewrite H0 in H. inversion H.
 Qed.
 
+(** Si tau(env) = [[]] alors env est vide **)
 Lemma revEnvEmpty : forall (env : environment), revCompEnv env = Some [] -> env = EmptyEnv.
 Proof.
   intros.
@@ -748,7 +506,7 @@ Proof.
   intros. rewrite H0 in H. inversion H.
 Qed.
 
-
+(** Si tau(env) renvoie une liste l, alors l a la même longueur que env **)
 Lemma LengthRevEnv : forall (env : environment) (li : list de_brujin),
   revCompEnv env = Some li -> List.length li = length_env env.
 Proof.
@@ -781,6 +539,7 @@ Proof.
   intros. rewrite H0 in H. inversion H.
 Qed.
 
+(** Appliquer tau à la machine de Krivine obtenue en compilant u renvoie u (même si u n'est pas clôt !)**)
 Theorem CompInverse : forall (u : de_brujin), revCompState (Comp u, EmptyEnv, EmptyStack) = Some u.
 Proof.
   intro.
@@ -812,6 +571,7 @@ Proof.
     inversion IHu1.
 Qed.
 
+(** Si un état est correct et qu'il a une transition, alors on reste correct après une transition **)
 Theorem correct_step : forall (cur : state), 
     CorrectState cur -> (exists nxt, stepKrivine cur = Some nxt) 
     -> (exists nxt, stepKrivine cur = Some nxt /\  CorrectState nxt).
@@ -995,19 +755,9 @@ Proof.
           inversion H2.
 Qed.
 
-Lemma sub_0 : forall n, n-0 = n.
-Proof.
-  lia.
-Qed.
-
-
-Lemma not_le : forall n m, ~ (n < m) -> m <= n.
-Proof.
-  lia.
-Qed.
-Lemma NotLt : forall n m, ~(n <= m) -> m < n.
-  lia.
-Qed.
+(** Décrit simplement que si on incrémente puis décrémente, on ne change rien 
+    Plus généralement, les lemmes qui suivent décrivent simplement des relations entre ces deux opérateurs 
+**)
 Lemma inc_dec_single_n : forall (n : nat) u, decrement_vars_greater n (increment_greater n u)= u.
 Proof.
   intro. intro.
@@ -1066,6 +816,7 @@ Proof.
     rewrite IHu1. rewrite IHu2.
     trivial.
 Qed.
+
 Lemma inc_dec_single : forall u, decrement_vars_greater 0 (increment_free_vars u) = u.
 Proof.
   intros.
@@ -1169,6 +920,8 @@ Proof.
   trivial.
 Qed.
 
+(** Un lemme clé pour le grand théorème qui suit : si u est un lambda terme, l une liste de lambda terne
+  alors si C[[n + |l|]](u), décrementer toutes les variables > n du lambda-terme obtenue en subsituant n, n + 1 , ..., n + |l|-1 par les termes de l obtenu en incrémentant les variables >= n, revient à juste faire u[[n <- l]] **)
 Lemma inc_dec_n : forall u n l, 
   ClosedN (n + length l) u -> decrement_vars_greater n (parallel_subst n (List.map (increment_greater n) l) u) = parallel_subst n l u.
 
@@ -1234,9 +987,8 @@ Proof.
     trivial.
     trivial.
 Qed.
-     
-    
-(* Change to more general dec/inc ! *)
+
+(** Le lemme précédent pour n = 0 **)
 Lemma inc_dec : forall (u : de_brujin) (l : list de_brujin),
   ClosedN (length l) u -> decrement_vars_greater 0 (parallel_subst 0 (List.map increment_free_vars l) u) 
   = parallel_subst 0 l u.
@@ -1246,69 +998,9 @@ Proof.
 
   rewrite Nat.add_0_l. trivial.
 Qed.
-Lemma sub_ineq : forall a b c,
-  a < b + c -> a >= b -> a - b < c.
-Proof.
-  lia.
-Qed.
 
-
-
-Lemma ClosedIncrement : forall n m u, ClosedN n u -> ClosedN (S n) (increment_greater m u).
-Proof.
-  intro. intro. intro.
-  generalize n m.
-  clear n m.
-  induction u.
-  
-  + intros.
-    simpl.
-    case_eq (n <? m).
-    intro.
-    inversion H. apply ClosedN_Var. 
-    apply le_S in H3.
-    trivial.
-    intro.
-    apply ClosedN_Var.
-    apply lt_n_S.
-    inversion H. trivial.
-  
-  + intros.
-    simpl.
-    apply ClosedN_Abstraction.
-    apply IHu.
-    inversion H.
-    trivial.
-  
-  + intros.
-    simpl. inversion H.
-    apply ClosedN_App.
-    apply IHu1. trivial.
-    apply IHu2. trivial.
-Qed.
-  
-Lemma ClosedIncForall : forall n l, Forall (ClosedN n) l -> Forall (ClosedN (S n)) (map increment_free_vars l).
-Proof.
-  intro.
-  intro.
-  generalize n.
-  clear n.
-  
-  induction l.
-  intros.
-  simpl.
-  trivial.
-  
-  intros.
-  simpl.
-  inversion H.
-  apply Forall_cons.
-  apply ClosedIncrement.
-  trivial.
-  apply IHl.
-  trivial.
-Qed.
-  
+(** Si l = [[u_1, ..., u_k]] et que C[[n]](u_i) pour tout i, et que C[[n + |l|]](u),
+alors C[[n]](u[[n <- l]]) **)
 Lemma SubstClosed : forall (u : de_brujin) (n : nat) (l : list de_brujin),
   Forall (ClosedN n) l -> ClosedN (n + length l) u -> ClosedN n (parallel_subst n l u).
 Proof.
@@ -1362,8 +1054,9 @@ Proof.
     inversion H0. trivial.
     apply IHu2. trivial. inversion H0. trivial.
 Qed.
-    
 
+(** Si e est un environnement correct, alors ou bien tau(env) = None,
+  ou bien tau(e) = l et tous les termes de l sont clos. Lemme fondamental pour la suite **)
 Lemma ClosedEnv : forall (e : environment),
   CorrectEnv e -> (revCompEnv e = None) \/ (exists liU, revCompEnv e = Some liU /\ (Forall Closed liU)).
 Proof.
@@ -1411,8 +1104,7 @@ Proof.
   intro. left. trivial.
 Qed.
 
-
-
+(** Lemme trivial : Dit que si u -> v, alors u u_1 ... u_k -> v u_1 ... u_k **)
 Lemma BetaFold : forall (l : list de_brujin) (u : de_brujin) (v : de_brujin),
   Beta u v -> Beta (List.fold_left (fun cur toAdd => App cur toAdd) l u)
   (List.fold_left (fun cur toAdd => App cur toAdd) l v).
@@ -1427,7 +1119,6 @@ Proof.
   apply BetaAppL.
   trivial.
 Qed.
-
 
 Lemma ClosedIncClosed_n : forall u n, ClosedN n u -> ClosedN n (increment_greater n u).
 Proof.
@@ -1456,12 +1147,15 @@ Proof.
   apply IHu2. inversion H. trivial.
 Qed.
 
+(** Si u n'a pas de variables libres, alors les incrémenter ne fait rien ...**)
 Lemma ClosedIncClosed : forall u, Closed u -> Closed (increment_free_vars u).
 Proof.
   intros.
   apply ClosedIncClosed_n.
   trivial.
 Qed.
+
+(** Pareil pour les listes **)
 Lemma ClosedIncClosedList : forall li, Forall Closed li -> Forall Closed (List.map increment_free_vars li).
 Proof.
   intro.
@@ -1477,6 +1171,9 @@ Proof.
   trivial.
 Qed.
 
+(** Si cur ->_kriv nxt, et tau(cur) = u, et cur est correct, alors ou bien tau(nxt) = u, ou bien u -> tau(nxt)
+l'énoncé demande de montrer que seulement le deuxième cas est possible, mais dans ma preuve je montre 
+que dans certains cas (les 2/3 en fait), tau modifie l'état sans changer le lambda-terme associé (en modifiant l'environnement ou la stack)**)
 Lemma transition_beta_lemma : forall (u : de_brujin) (cur : state) (nxt : state),
   stepKrivine cur = Some nxt -> revCompState cur = Some u -> CorrectState cur ->
     revCompState cur = revCompState nxt \/ (exists (v : de_brujin), revCompState nxt = Some v /\ Beta u v). 
@@ -1713,6 +1410,7 @@ Proof.
         intros. case_eq (revCompCode c). trivial. trivial.
 Qed.
 
+(** Même théorème que ci-dessus en ne supposant plus l'existence de u, qui découle d'un autre théorème**)
 Theorem transition_beta : forall cur nxt,
   stepKrivine cur = Some nxt -> CorrectState cur -> 
     revCompState cur = revCompState nxt 
@@ -1737,6 +1435,125 @@ Proof.
   trivial.
   destruct H.
   trivial.
+  trivial.
+  trivial.
+Qed.
+
+(** Si u est clos, alors (Comp u, [[]], [[]]) est un état valide**)
+Theorem compilation_valide : forall u,
+  Closed u -> CorrectState (Comp u, EmptyEnv, EmptyStack).
+Proof.
+  intros.
+  split.
+  + exists u.
+    split.
+    simpl.
+    trivial.
+    rewrite <- CompInverse.
+    simpl.
+    case_eq (revCompCode (Comp u)).
+    intros.
+    rewrite subst_empty_trivial.
+    trivial.
+    trivial.
+    
+  + apply CorrectEmptyEnv.
+  + apply CorrectEmptyStk.
+Qed.
+
+(** Si un état s se réduit en n étapes en t, et s est valide, alors tau(s) ->* tau(t) **)
+Theorem transitions_beta_star : forall n s st,
+  CorrectState s -> KrivineReduceN n s st -> (exists u, revCompState s = Some u /\ (exists v, revCompState st = Some v /\ BetaS u v)).
+Proof.
+  intro.
+  induction n.
+  
+  + intros.
+    inversion H0.
+    rewrite <- H3.
+    apply CorrectStateDecomp in H.
+    destruct H.
+    rewrite H.
+    exists x.
+    split.
+    trivial.
+    exists x.
+    split. trivial. apply BetaSRefl.
+
+  + intros.
+    inversion H0.
+    apply IHn in H3.
+    destruct H3.
+    destruct H3.
+    destruct H6.
+    destruct H6.
+    apply (transition_beta s t) in H.
+    destruct H.
+    exists x.
+    split.
+    rewrite H.
+    trivial.
+    exists x0.
+    split.
+    trivial.
+    trivial.
+    destruct H.
+    destruct H.
+    destruct H8.
+    destruct H8.
+    exists x1.
+    split.
+    trivial.
+    exists x0.
+    split.
+    trivial.
+    apply (BetaSStep x1 x2 x0).
+    trivial.
+    rewrite H8 in H3.
+    inversion H3.
+    trivial.
+    trivial.
+    apply correct_step in H.
+    destruct H.
+    destruct H.
+    rewrite H in H2.
+    inversion H2.
+    rewrite <- H8.
+    trivial.
+    exists t.
+    trivial.
+Qed.
+
+(** Pareil mais en partant de l'etat initial associé à un lambda-terme**)
+Theorem compilation_reductions : forall u st n,
+  KrivineReduceN n (Comp u, EmptyEnv, EmptyStack) st -> Closed u -> (exists v, revCompState st = Some v /\ BetaS u v).
+Proof.
+  intros.
+  apply compilation_valide in H0.
+  apply (transitions_beta_star n (Comp u, EmptyEnv, EmptyStack) st) in H.
+  destruct H.
+  destruct H.
+  destruct H1.
+  destruct H1.
+  exists x0.
+  split.
+  trivial.
+  rewrite  CompInverse in H.
+  inversion H.
+  trivial.
+  trivial.
+Qed.
+
+(** Le théorème de la compilation, qui dit que si on prend un combinateur u,
+alors en notant s l'état initial associé à u, si s se réduit en un nombre fini d'étapes en t, alors u ->* tau(t) **)
+Theorem theoreme_compilation : forall u st,
+  KrivineReduce (Comp u, EmptyEnv, EmptyStack) st -> Closed u -> (exists v, revCompState st = Some v /\ BetaS u v).
+Proof.
+  intros.
+  destruct H.
+  apply compilation_reductions in H.
+  destruct H.
+  exists x0.
   trivial.
   trivial.
 Qed.
